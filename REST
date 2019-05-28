@@ -1,0 +1,372 @@
+package sailpoint.rest;
+
+import java.io.PrintStream;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import javax.ws.rs.Consumes;
+import javax.ws.rs.GET;
+import javax.ws.rs.POST;
+import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.MultivaluedMap;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import sailpoint.Version;
+import sailpoint.api.SailPointContext;
+import sailpoint.api.SailPointFactory;
+import sailpoint.api.Workflower;
+import sailpoint.object.ApprovalItem;
+import sailpoint.object.ApprovalSet;
+import sailpoint.object.Comment;
+import sailpoint.object.Custom;
+import sailpoint.object.Filter;
+import sailpoint.object.Identity;
+import sailpoint.object.QueryOptions;
+import sailpoint.object.QueryOptions.Ordering;
+import sailpoint.object.WorkItem;
+import sailpoint.object.WorkItem.State;
+import sailpoint.object.WorkItem.Type;
+import sailpoint.rest.plugin.AllowAll;
+import sailpoint.rest.plugin.BasePluginResource;
+import sailpoint.tools.GeneralException;
+
+@Path("/test")
+@AllowAll
+public class RESTPlugin extends BasePluginResource
+{
+  @GET
+  @Path("/customObject")
+  @AllowAll
+  public JSONObject getCustomObject()
+    throws GeneralException
+  {
+    //JSONArray ja = new JSONArray();
+    SailPointContext context = SailPointFactory.getCurrentContext();
+    String ver = Version.getVersion().toString();
+
+    Custom custom = (Custom)context.getObjectByName(Custom.class, "BulkApprovalPlugin-Configuration");
+
+    Map idmap = (Map)custom.get(ver);
+    JSONObject jo = new JSONObject();
+    jo.put("id1", idmap.get("id1"));
+    jo.put("id2", idmap.get("id2"));
+    jo.put("html1", idmap.get("html1"));
+    System.out.println(jo);
+    return jo;
+  }
+  @GET
+  @Path("/items")
+  @Consumes({"application/json"})
+  @AllowAll
+  public JSONArray getWorkItems(@Context HttpHeaders httpHeaders) throws GeneralException { SailPointContext context = SailPointFactory.getCurrentContext();
+    Identity identity = (Identity)context.getObjectByName(Identity.class, context.getUserName());
+
+    Map headers = new HashMap();
+    for (Map.Entry entry : httpHeaders.getRequestHeaders().entrySet()) {
+      headers.put(entry.getKey(), ((List)entry.getValue()).get(0));
+    }
+    int itr = 1;
+    int pageSize = Integer.parseInt(headers.get("pagesize").toString());
+    int pageCount = Integer.parseInt(headers.get("pagecount").toString());
+    if (pageCount >= 1)
+    {
+      itr += pageSize * (pageCount - 1);
+    }
+    System.out.println("pageSize1 : " + Integer.parseInt(headers.get("pagesize").toString()));
+    System.out.println("pageCount1 : " + headers.get("pagecount"));
+    List<Identity> workgroups = identity.getWorkgroups();
+
+    Filter fil = Filter.eq("owner.name", identity.getName());
+    for (Identity workgroup : workgroups) {
+      fil = Filter.or(fil, Filter.eq("owner.name", workgroup.getName()));
+    }
+    fil = Filter.and(fil, Filter.eq("type", "Approval"));
+    QueryOptions qo = new QueryOptions();
+    qo.addFilter(fil);
+
+    Object ordering = new ArrayList();
+    ((List)ordering).add(new QueryOptions.Ordering("created", false));
+    int totalWorkitemsCount = context.countObjects(WorkItem.class, qo);
+    int noOfPages = totalWorkitemsCount / pageSize;
+    if (totalWorkitemsCount % pageSize != 0)
+      noOfPages++;
+    qo.setOrderings((List)ordering);
+
+    qo.setResultLimit(pageCount * pageSize);
+    List workitems = context.getObjects(WorkItem.class, qo);
+
+    JSONArray ja = new JSONArray();
+
+    if (workitems != null) {
+    	System.out.println("WorkItem is not null");
+      for (int i = (pageCount - 1) * pageSize; (i < workitems.size()) && (i < pageCount * pageSize); i++) {
+        WorkItem wi = (WorkItem)workitems.get(i);
+        String op = "";
+        String app = "";
+        ApprovalSet approvalSet = wi.getApprovalSet();
+        if (approvalSet != null) {
+          List<ApprovalItem> approvalItems = wi.getApprovalSet().getItems();
+
+          for (ApprovalItem approvalItem : approvalItems) {
+            op = op + " : "+ approvalItem.getOperation() + " : " + approvalItem.getValue();
+            app = approvalItem.getApplication();
+            System.out.println(approvalItem.getOperation() + " : " + approvalItem.getValue());
+          }
+        }
+        JSONObject jo = new JSONObject();
+        String pattern = "MM-dd-yyyy";
+        SimpleDateFormat simpleDateFormat = new SimpleDateFormat(pattern);
+        String date = simpleDateFormat.format(wi.getCreated());
+        jo.put("No", Integer.valueOf(itr));
+		
+		String wItemid=wi.getId();
+		if(wItemid!=null)
+		{
+        jo.put("Id", wItemid);
+		}
+		
+		String wItemName= wi.getName();
+		if(wItemName!=null)
+		{
+       jo.put("Name",wItemName);
+		}
+		
+		
+		Type wItemType= wi.getType();
+		if(wItemType!=null)
+		{
+     jo.put("Type", wItemType.toString());
+		}
+		else
+		{ jo.put("Type","N/A");
+	
+		}
+		
+		
+		Identity wItemRequester= wi.getRequester();
+		if(wItemRequester!=null)
+		{
+     jo.put("Requester", wi.getRequester().getName());
+		}
+		else
+		{ jo.put("Requester","N/A");
+	
+		}
+		
+		String wItemDesc= wi.getDescription();
+		if(wItemDesc!=null)
+		{
+    jo.put("Description", wItemDesc);
+		}
+		else
+		{ jo.put("Description","N/A");
+	
+		}
+		
+		
+        
+   
+	String wiRequestee=	 (String)wi.getAttribute("identityDisplayName");
+		if( wiRequestee!=null)
+       {
+        jo.put("Requestee", wiRequestee);
+		}
+		else
+		{
+			System.out.println("Requestee is null");
+		  jo.put("Requestee", "N/A");}
+		  
+		 
+		if( app!=null)
+       {System.out.println("Requestee is not null");
+        jo.put("Application", app);
+		}
+		else
+		{System.out.println("Requestee is null");
+		  jo.put("Application", "N/A");}
+		  
+		  
+		  
+		
+		if( op!=null)
+       {System.out.println("Operation is not null");
+        jo.put("Operation", op);
+		}
+		else
+		{System.out.println("Operation is  null");
+		  jo.put("Operation", "N/A");}
+        
+    
+        jo.put("NoOfPages", Integer.valueOf(noOfPages));
+      
+		Identity wiOwner=	wi.getOwner();
+		if( wiOwner!=null)
+       {System.out.println("Owner is not  null");
+        jo.put("Owner", wiOwner.getDisplayName().toString());
+		}
+		else
+		{System.out.println("Owner is null");
+		  jo.put("Owner", "N/A");}
+	
+	
+        jo.put("Created", date);
+        jo.put("totalItems", Integer.valueOf(totalWorkitemsCount));
+
+        ja.add(jo);
+        itr++;
+      }
+    }
+    return (JSONArray)ja; } 
+  @POST
+  @Path("/approval")
+  @Consumes({"application/json"})
+  @Produces({"application/json"})
+  @AllowAll
+  public HashMap<String, String> approveWorkItems(HashMap<String, String> wimap) throws GeneralException { SailPointContext context = SailPointFactory.getCurrentContext();
+    Identity identity = (Identity)context.getObjectByName(Identity.class, context.getUserName());
+    System.out.println(wimap);
+    int i = 0;
+    String steps = "";
+    List<WorkItem> WIList = new ArrayList();
+    List commentList = new ArrayList();
+    for (Map.Entry entry : wimap.entrySet()) {
+      System.out.println((String)entry.getKey() + " " + (String)entry.getValue());
+      WorkItem wList = (WorkItem)context.getObjectByName(WorkItem.class, (String)entry.getKey());
+      System.out.println(wList);
+      commentList.add((String)entry.getValue());
+      WIList.add(wList);
+    }
+    if (WIList.size() != 0)
+    {
+      for (WorkItem workItemObject : WIList)
+      {
+        String workItemId = workItemObject.getId();
+        steps = steps + " Work item id::" + workItemId;
+        List<ApprovalItem> approvalList = workItemObject.getApprovalSet().getItems();
+        System.out.println("1");
+
+        if (approvalList != null) {
+          System.out.println("WorkItem Found --- " + workItemId);
+          System.out.println("2");
+          for (ApprovalItem appItem : approvalList)
+          {
+            Comment cmnd = new Comment();
+            cmnd.setComment((String)commentList.get(i));
+            appItem.add(cmnd);
+            appItem.setState(WorkItem.State.Finished);
+            System.out.println("3");
+
+            Workflower swh = new Workflower(context);
+            System.out.println((String)commentList.get(i) + " is comments");
+            workItemObject.setCompletionComments((String)commentList.get(i));
+            workItemObject.addComment((String)commentList.get(i));
+            workItemObject.setCompleter(identity.getName());
+            workItemObject.setState(WorkItem.State.Finished);
+            context.saveObject(workItemObject);
+            context.commitTransaction();
+            System.out.println("APPROVED!!");
+            swh.finish(workItemObject);
+
+            context.commitTransaction();
+            System.out.println("5");
+            i++;
+          }
+        }
+      }
+    }
+    else {
+      System.out.println("workItem. is null");
+    }
+    HashMap map = new HashMap();
+    map.put("Status", "Approved");
+    System.out.println(map);
+    return map; } 
+  @POST
+  @Path("/reject")
+  @Consumes({"application/json"})
+  @Produces({"application/json"})
+  @AllowAll
+  public HashMap<String, String> rejectWorkItems(HashMap<String, String> wimap) throws GeneralException { SailPointContext context = SailPointFactory.getCurrentContext();
+    Identity identity = (Identity)context.getObjectByName(Identity.class, context.getUserName());
+    System.out.println(wimap);
+    int i = 0;
+    String steps = "";
+    List<WorkItem> WIList = new ArrayList();
+    List commentList = new ArrayList();
+    for (Map.Entry entry : wimap.entrySet()) {
+      System.out.println((String)entry.getKey() + " " + (String)entry.getValue());
+      WorkItem wList = (WorkItem)context.getObjectByName(WorkItem.class, (String)entry.getKey());
+      System.out.println(wList);
+      commentList.add((String)entry.getValue());
+      WIList.add(wList);
+    }
+    if (WIList.size() != 0)
+    {
+      for (WorkItem workItemObject : WIList)
+      {
+        String workItemId = workItemObject.getId();
+        steps = steps + " Work item id::" + workItemId;
+        List<ApprovalItem> approvalList = workItemObject.getApprovalSet().getItems();
+        System.out.println("1");
+
+        if (approvalList != null) {
+          System.out.println("WorkItem Found --- " + workItemId);
+          System.out.println("2");
+          for (ApprovalItem appItem : approvalList)
+          {
+            Comment cmnd = new Comment();
+            cmnd.setComment((String)commentList.get(i));
+
+            appItem.setRequesterComments((String)commentList.get(i));
+            appItem.setState(WorkItem.State.Rejected);
+            System.out.println("3");
+
+            Workflower swh = new Workflower(context);
+            System.out.println((String)commentList.get(i) + " is comments");
+            workItemObject.setCompletionComments((String)commentList.get(i));
+            workItemObject.addComment((String)commentList.get(i));
+            workItemObject.setCompleter(identity.getName());
+            workItemObject.setState(WorkItem.State.Rejected);
+            context.saveObject(workItemObject);
+            context.commitTransaction();
+            System.out.println("REJECTED!!");
+            swh.finish(workItemObject);
+
+            context.commitTransaction();
+            System.out.println("5");
+            i++;
+          }
+        }
+      }
+    }
+    else {
+      System.out.println("workItem. is null");
+    }
+    HashMap map = new HashMap();
+    map.put("Status", "Rejected");
+    System.out.println(map);
+    return map;
+  }
+
+  public String getDate(String date)
+  {
+    String[] values = date.split(" ");
+
+    String dd = values[2];
+    String mm = values[1];
+    String yy = values[5];
+    String newDate = mm + "/" + dd + "/" + yy;
+    return newDate;
+  }
+
+  public String getPluginName()
+  {
+    return "myPlugin";
+  }
+}
