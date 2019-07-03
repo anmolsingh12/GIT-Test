@@ -1,0 +1,38 @@
+import java.sql.*;
+import sailpoint.object.Identity;
+
+  Identity id = plan.getIdentity();
+
+  String identityname = id.getName();
+
+  Statement smt = null;
+  PreparedStatement ps = null;
+  ResultSet rs = null;
+
+  try
+  {
+    ps = connection.prepareStatement("UPDATE app_account SET inactive = ? WHERE emp_id = ?");
+    ps.setString(1, id.isInactive().toString());
+		ps.setString(2, identityname);
+    
+    ps.executeUpdate();
+  }
+  catch(Exception ex)
+  {
+    ex.printStackTrace();
+  }
+  finally
+  {
+    if(rs!=null)
+    {
+      rs.close();
+    }
+    if(ps!=null)
+    {
+      ps.close();
+    }
+    if(smt!=null)
+    {
+      smt.close();
+    }
+  }
